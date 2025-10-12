@@ -302,11 +302,19 @@ class PornHubIE(PornHubBaseIE):
         # http://www.pornhub.com/view_video.php?viewkey=1331683002), not relying
         # on that anymore.
         title = self._html_search_meta(
-            'twitter:title', webpage, default=None) or self._html_search_regex(
-            (r'(?s)<h1[^>]+class=["\']title["\'][^>]*>(?P<title>.+?)</h1>',
-             r'<div[^>]+data-video-title=(["\'])(?P<title>(?:(?!\1).)+)\1',
-             r'shareTitle["\']\s*[=:]\s*(["\'])(?P<title>(?:(?!\1).)+)\1'),
+            ['og:title', 'twitter:title'], webpage, 'title', default=None) or self._html_search_regex(
+            (
+                # New pattern for the current HTML structure
+                r'<h1[^>]+class="[^"]*inlineFree[^"]*">(?P<title>.+?)</h1>',
+                # A more specific version that also checks for a data-title attribute
+                r'<h1[^>]+data-title="(?P<title>[^"]+)"',
+                # Fallback to the document's main title tag and clean it
+                r'<title>\s*(?P<title>.+?)\s+-\s+Pornhub\.com\s*</title>'
+            ),
             webpage, 'title', group='title')
+        
+        if title:
+            title = title.strip()
 
         video_urls = []
         video_urls_set = set()
