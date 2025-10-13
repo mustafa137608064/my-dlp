@@ -320,10 +320,22 @@ class PornHubIE(PornHubBaseIE):
         video_urls_set = set()
         subtitles = {}
 
-        flashvars = self._parse_json(
-            self._search_regex(
-                r'var\s+flashvars_\d+\s*=\s*({.+?});', webpage, 'flashvars', default='{}'),
-            video_id)
+        flashvars = self._search_json(
+            r'var\s+flashvars\d*\s*=\s*', webpage,
+            'flashvars', video_id, default=None)
+
+        if not flashvars:
+            player_script = self._search_regex(
+                r'(?s)(<script.*?(?:var\s+player_mp4_seek|flashvars|PLAYER_VARS|qualityItems).+?</script>)',
+                webpage, 'player script')
+            flashvars = self._search_json(
+                r'var\s+flashvars\d*\s*=\s*', player_script,
+                'flashvars', video_id)
+
+        video_urls = []
+        video_urls_set = set()
+        subtitles = {}
+
         if flashvars:
             subtitle_url = url_or_none(flashvars.get('closedCaptionsFile'))
             if subtitle_url:
