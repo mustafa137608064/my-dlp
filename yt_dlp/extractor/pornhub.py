@@ -301,25 +301,11 @@ class PornHubIE(PornHubBaseIE):
         # video_title from flashvars contains whitespace instead of non-ASCII (see
         # http://www.pornhub.com/view_video.php?viewkey=1331683002), not relying
         # on that anymore.
+        # New, more robust title extraction
         title = self._html_search_meta(
-            ['og:title', 'twitter:title'], webpage, 'title', default=None) or self._html_search_regex(
-            (
-                # New pattern for the current HTML structure
-                r'<h1[^>]+class="[^"]*inlineFree[^"]*">(?P<title>.+?)</h1>',
-                # A more specific version that also checks for a data-title attribute
-                r'<h1[^>]+data-title="(?P<title>[^"]+)"',
-                # Fallback to the document's main title tag and clean it
-                r'<title>\s*(?P<title>.+?)\s+-\s+Pornhub\.com\s*</title>'
-            ),
-            webpage, 'title', group='title')
-        
-        if title:
-            title = title.strip()
+            ['og:title', 'twitter:title'], webpage, 'title', fatal=True)
 
-        video_urls = []
-        video_urls_set = set()
-        subtitles = {}
-
+        # New, more robust flashvars/video data extraction
         flashvars = self._search_json(
             r'var\s+flashvars\d*\s*=\s*', webpage,
             'flashvars', video_id, default=None)
@@ -360,7 +346,7 @@ class PornHubIE(PornHubBaseIE):
                         (video_url, int_or_none(definition.get('quality'))))
         else:
             thumbnail, duration = [None] * 2
-
+            
         def extract_js_vars(webpage, pattern, default=NO_DEFAULT):
             assignments = self._search_regex(
                 pattern, webpage, 'encoded url', default=default)
