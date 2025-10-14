@@ -315,9 +315,17 @@ class PornHubIE(PornHubBaseIE):
             'flashvars', video_id, default=None)
 
         if not flashvars:
+            # تلاش برای پیدا کردن اسکریپت پلیر با یک الگوی عمومی‌تر و قوی‌تر
             player_script = self._search_regex(
-                r'(?s)(<script.*?(?:var\s+player_mp4_seek|flashvars|PLAYER_VARS|qualityItems).+?</script>)',
+                r'(?s)(<script[^>]*>.*?\bmediaDefinitions\b.*?</script>)',
                 webpage, 'player script', default=None)
+            
+            if not player_script:
+                 # اگر الگوی جدید کار نکرد، از الگوی قدیمی‌تر استفاده کن
+                 player_script = self._search_regex(
+                    r'(?s)(<script.*?(?:var\s+player_mp4_seek|flashvars|PLAYER_VARS|qualityItems).+?</script>)',
+                    webpage, 'player script', default=None)
+
             if player_script:
                 flashvars = self._search_json(
                     r'var\s+flashvars\d*\s*=\s*', player_script,
