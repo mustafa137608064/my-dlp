@@ -303,7 +303,19 @@ class PornHubIE(PornHubBaseIE):
         # on that anymore.
         # New, more robust title extraction
         title = self._html_search_meta(
-            ['og:title', 'twitter:title'], webpage, 'title', fatal=True)
+            ['og:title', 'twitter:title'], webpage, 'title', default=None) or self._html_search_regex(
+            (
+                # الگوی جدید و دقیق برای تگ h1 با اتریبیوت data-title
+                r'<h1[^>]+data-title="(?P<title>[^"]+)"',
+                # الگوی جایگزین برای تگ h1 با کلاس inlineFree
+                r'<h1[^>]+class="[^"]*title[^"]*"><span[^>]+class="inlineFree[^"]*">(?P<title>.+?)</span>',
+                # الگوی نهایی با استفاده از تگ title اصلی صفحه
+                r'<title>\s*(?P<title>.+?)\s+-\s+Pornhub\.com\s*</title>'
+            ),
+            webpage, 'title', group='title')
+        
+        if title:
+            title = title.strip()
 
         # New, more robust flashvars/video data extraction
         flashvars = self._search_json(
