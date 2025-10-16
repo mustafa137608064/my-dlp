@@ -114,14 +114,14 @@ class XVideosIE(InfoExtractor):
 
         title = self._html_search_regex(
             (r'<title>(?P<title>.+?)\s+-\s+XVID',
-             r'(?:html5player\.)?setVideoTitle\s*\(\s*(["\'])(?P<title>(?:(?!\1).)+)\1',
+             r'setVideoTitle\s*\(\s*(["\'])(?P<title>(?:(?!\1).)+)\1'),
             webpage, 'title', default=None,
             group='title') or self._og_search_title(webpage)
 
         thumbnails = []
         for preference, thumbnail in enumerate(('', '169')):
             thumbnail_url = self._search_regex(
-                rf'(?:html5player\.)?setThumbUrl{thumbnail}\(\s*(["\'])(?P<thumbnail>(?:(?!\1).)+)\1',
+                rf'setThumbUrl{thumbnail}\(\s*(["\'])(?P<thumbnail>(?:(?!\1).)+)\1',
                 webpage, 'thumbnail', default=None, group='thumbnail')
             if thumbnail_url:
                 thumbnails.append({
@@ -146,7 +146,7 @@ class XVideosIE(InfoExtractor):
             })
 
         for kind, _, format_url in re.findall(
-                r'(?:html5player\.)?setVideo([^(]+)\((["\'])(http.+?)\2\)', webpage):
+                r'setVideo([^(]+)\((["\'])(http.+?)\2\)', webpage):
             format_id = kind.lower()
             if format_id == 'hls':
                 hls_formats = self._extract_m3u8_formats(
