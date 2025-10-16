@@ -298,70 +298,124 @@ class PornHubIE(PornHubBaseIE):
                 r'>\s*This content is unavailable in your country')):
             self.raise_geo_restricted()
 
+        # video_title from flashvars contains whitespace instead of non-ASCII (see
+        # http://www.pornhub.com/view_video.php?viewkey=1331683002), not relying
+        # on that anymore.
         title = self._html_search_meta(
-            ['og:title', 'twitter:title'], webpage, 'title', default=None) or self._html_search_regex(
-            (
-                r'<h1[^>]+data-title="(?P<title>[^"]+)"',
-                r'<h1[^>]+class="[^"]*title[^"]*"><span[^>]+class="inlineFree[^"]*">(?P<title>.+?)</span>',
-                r'<title>\s*(?P<title>.+?)\s+-\s+Pornhub\.com\s*</title>'
-            ),
-            webpage, 'title', group='title', fatal=False)
-        
-        if title:
-            title = title.strip()
-
-        flashvars = self._search_json(
-            r'var\s+flashvars\d*\s*=\s*', webpage,
-            'flashvars', video_id, default=None)
-
-        if not flashvars:
-            # تلاش برای پیدا کردن اسکریپت پلیر با یک الگوی عمومی‌تر و قوی‌تر
-            player_script = self._search_regex(
-                r'(?s)(<script[^>]*>.*?\bmediaDefinitions\b.*?</script>)',
-                webpage, 'player script', default=None)
-            
-            if not player_script:
-                 # اگر الگوی جدید کار نکرد، از الگوی قدیمی‌تر استفاده کن
-                 player_script = self._search_regex(
-                    r'(?s)(<script.*?(?:var\s+player_mp4_seek|flashvars|PLAYER_VARS|qualityItems).+?</script>)',
-                    webpage, 'player script', default=None)
-
-            if player_script:
-                flashvars = self._search_json(
-                    r'var\s+flashvars\d*\s*=\s*', player_script,
-                    'flashvars', video_id)
-
-        if not flashvars:
-             raise ExtractorError('Unable to extract flashvars; please report this issue.', video_id=video_id, expected=True)
+            'twitter:title', webpage, default=None) or self._html_search_regex(
+            (r'(?s)<h1[^>]+class=["\']title["\'][^>]*>(?P<title>.+?)</h1>',
+             r'<div[^>]+data-video-title=(["\'])(?P<title>(?:(?!\1).)+)\1',
+             r'shareTitle["\']\s*[=:]\s*(["\'])(?P<title>(?:(?!\1).)+)\1'),
+            webpage, 'title', group='title')
 
         video_urls = []
         video_urls_set = set()
         subtitles = {}
 
-        subtitle_url = url_or_none(flashvars.get('closedCaptionsFile'))
-        if subtitle_url:
-            subtitles.setdefault('en', []).append({
-                'url': subtitle_url,
-                'ext': 'srt',
-            })
-        thumbnail = flashvars.get('image_url')
-        duration = int_or_none(flashvars.get('video_duration'))
-        media_definitions = flashvars.get('mediaDefinitions')
-        if isinstance(media_definitions, list):
-            for definition in media_definitions:
-                if not isinstance(definition, dict):
-                    continue
-                video_url = definition.get('videoUrl')
-                if not video_url or not isinstance(video_url, str):
-                    continue
-                if video_url in video_urls_set:
-                    continue
-                video_urls_set.add(video_url)
-                video_urls.append(
-                    (video_url, int_or_none(definition.get('quality'))))
+        flashvars = self._parse_json(
+            self._search_regex(
+                r'var\s+flashvars_\d+\s*=\s*({.+?});', webpage, 'flashvars', default='{}'),
+            video_id)
+        if flashvars:
+            subtitle_url = url_or_none(flashvars.get('closedCaptionsFile'))
+            if subtitle_url:
+                subtitles.setdefault('en', []).append({
+                    'url': subtitle_url,
+                    'ext': 'srt',
+                })
+            thumbnail = flashvars.get('image_url')
+            duration = int_or_none(flashvars.get('video_duration'))
+            media_definitions = flashvars.get('mediaDefinitions')
+            if isinstance(media_definitions, list):
+                for definition in media_definitions:
+                    if not isinstance(definition, dict):
+                        continue
+                    video_url = definition.get('videoUrl')
+                    if not video_url or not isinstance(video_url, str):
+                        continue
+                    if video_url in video_urls_set:
+                        continue
+                    video_urls_set.add(video_url)
+                    video_urls.append(
+                        (video_url, int_or_none(definition.get('quality'))))
+        else:
+            thumbnail, duration = [None] * 2
 
-        if not video_urls and re.search(r'<[^>]+\bid=["\']lockedPlayer', webpage):
-            raise ExtractorError(f'Video {video_id} is locked', expected=True)
+        def extract_js_vars(webpage, pattern, default=NO_DEFAULT):
+            assignments = self._search_regex(
+                pattern, webpage, 'encoded url', default=default)
+            if not assignments:
+                return {}
+
+            assignments = assignments.split(';')
+
+            js_vars = {}
+
+            def parse_js_value(inp):
+                inp = re.sub(r'/\*(?:(?!\*/).)*?\*/', '', inp)
+                if '+' in inp:
+                    inps = inp.split('+')
+                    return functools.reduce(
+                        operator.concat, map(parse_js_value, inps))
+                inp = inp.strip()
+                if inp in js_vars:
+                    return js_vars[inp]
+                return remove_quotes(inp)
+
+            for assn in assignments:
+                assn = assn.strip()
+                if not assn:
+                    continue
+                assn = re.sub(r'var\s+', '', assn)
+                vname, value = assn.split('=', 1)
+                js_vars[vname] = parse_js_value(value)
+            return js_vars
+
+        def add_video_url(video_url):
+            v_url = url_or_none(video_url)
+            if not v_url:
+                return
+            if v_url in video_urls_set:
+                return
+            video_urls.append((v_url, None))
+            video_urls_set.add(v_url)
+
+        def parse_quality_items(quality_items):
+            q_items = self._parse_json(quality_items, video_id, fatal=False)
+            if not isinstance(q_items, list):
+                return
+            for item in q_items:
+                if isinstance(item, dict):
+                    add_video_url(item.get('url'))
+
+        if not video_urls:
+            FORMAT_PREFIXES = ('media', 'quality', 'qualityItems')
+            js_vars = extract_js_vars(
+                webpage, r'(var\s+(?:{})_.+)'.format('|'.join(FORMAT_PREFIXES)),
+                default=None)
+            if js_vars:
+                for key, format_url in js_vars.items():
+                    if key.startswith(FORMAT_PREFIXES[-1]):
+                        parse_quality_items(format_url)
+                    elif any(key.startswith(p) for p in FORMAT_PREFIXES[:2]):
+                        add_video_url(format_url)
+            if not video_urls and re.search(
+                    r'<[^>]+\bid=["\']lockedPlayer', webpage):
+                raise ExtractorError(
+                    f'Video {video_id} is locked', expected=True)
+
+        if not video_urls:
+            js_vars = extract_js_vars(
+                dl_webpage('tv'), r'(var.+?mediastring.+?)</script>')
+            add_video_url(js_vars['mediastring'])
+
+        for mobj in re.finditer(
+                r'<a[^>]+\bclass=["\']downloadBtn\b[^>]+\bhref=(["\'])(?P<url>(?:(?!\1).)+)\1',
+                webpage):
+            video_url = mobj.group('url')
+            if video_url not in video_urls_set:
+                video_urls.append((video_url, None))
+                video_urls_set.add(video_url)
 
         upload_date = None
         formats = []
@@ -408,7 +462,7 @@ class PornHubIE(PornHubBaseIE):
             add_format(video_url)
 
         model_profile = self._search_json(
-            r'var\s+MODEL_PROFILE\s*=', webpage, 'model profile', video_id, fatal=False) or {}
+            r'var\s+MODEL_PROFILE\s*=', webpage, 'model profile', video_id, fatal=False)
         video_uploader = self._html_search_regex(
             r'(?s)From:&nbsp;.+?<(?:a\b[^>]+\bhref=["\']/(?:(?:user|channel)s|model|pornstar)/|span\b[^>]+\bclass=["\']username)[^>]+>(.+?)<',
             webpage, 'uploader', default=None) or model_profile.get('username')
@@ -432,10 +486,10 @@ class PornHubIE(PornHubBaseIE):
                 webpage, meta_key, default=None)
             if div:
                 return [clean_html(x).strip() for x in re.findall(r'(?s)<a[^>]+\bhref=[^>]+>.+?</a>', div)]
-            return []
 
         info = self._search_json_ld(webpage, video_id, default={})
-        info.pop('description', None)
+        # description provided in JSON-LD is irrelevant
+        info['description'] = None
 
         return merge_dicts({
             'id': video_id,
