@@ -302,11 +302,12 @@ class PornHubIE(PornHubBaseIE):
         # http://www.pornhub.com/view_video.php?viewkey=1331683002), not relying
         # on that anymore.
         title = self._html_search_meta(
-            'twitter:title', webpage, default=None, name_key='property') or self._html_search_regex(
-            (r'(?s)<h1[^>]+class=["\']title["\'][^>]*>(?P<title>.+?)</h1>',
-             r'<div[^>]+data-video-title=(["\'])(?P<title>(?:(?!\1).)+)\1',
-             r'shareTitle["\']\s*[=:]\s*(["\'])(?P<title>(?:(?!\1).)+)\1'),
-            webpage, 'title', group='title')
+            'twitter:title', webpage, default=None) or self._html_search_regex(
+            (r'<meta\s+property="twitter:title"\s+content="(?P<title>[^"]+)"',  # <-- این الگو اضافه شود
+             r'(?s)<h1[^>]+class=["\']title["\'][^>]*>(?P<title>.+?)</h1>',
+             r'<div[^>]+data-video-title=(["\'])(?P<title>(?:(?!\1).)+)\1',
+             r'shareTitle["\']\s*[=:]\s*(["\'])(?P<title>(?:(?!\1).)+)\1'),
+            webpage, 'title', group='title')
 
         video_urls = []
         video_urls_set = set()
